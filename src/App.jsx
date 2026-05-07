@@ -1,31 +1,57 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import axios from 'axios'
 
 function App() {
   const [word, setWord] = useState('')
   const [meaning, setMeaning] = useState('')
   const [wordList, setWordList] = useState([])
 
-  const handleAdd = () => {
+  // 获取单词列表
+  const getWords = async () => {
+    try {
+      const res = await axios.get('http://localhost:3000/words')
+      setWordList(res.data)
+    } catch (error) {
+      console.log(error)
+      alert('获取数据失败')
+    }
+  }
+
+  // 页面加载执行
+  useEffect(() => {
+    getWords()
+  }, [])
+
+  // 添加单词
+  const handleAdd = async () => {
     if (!word || !meaning) {
       alert('请输入完整内容')
       return
     }
 
-    const newWord = {
-      id: Date.now(),
-      word,
-      meaning,
+    try {
+      await axios.post('http://localhost:3000/words', {
+        word,
+        meaning,
+      })
+
+      alert('添加成功')
+
+      // 清空输入框
+      setWord('')
+      setMeaning('')
+
+      // 重新获取列表
+      getWords()
+    } catch (error) {
+      console.log(error)
+      alert('添加失败')
     }
-
-    setWordList([...wordList, newWord])
-
-    setWord('')
-    setMeaning('')
   }
 
   return (
     <div style={{ padding: '40px', fontFamily: 'Arial' }}>
-      <h1>单词管理系统</h1>
+      <h1>React 单词管理系统</h1>
 
       <div style={{ marginBottom: '20px' }}>
         <input
@@ -75,6 +101,7 @@ function App() {
           <table border="1" cellPadding="10">
             <thead>
               <tr>
+                <th>ID</th>
                 <th>英文单词</th>
                 <th>中文意思</th>
               </tr>
@@ -83,6 +110,7 @@ function App() {
             <tbody>
               {wordList.map((item) => (
                 <tr key={item.id}>
+                  <td>{item.id}</td>
                   <td>{item.word}</td>
                   <td>{item.meaning}</td>
                 </tr>
