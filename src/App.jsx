@@ -1,124 +1,93 @@
-import { useEffect, useState } from 'react'
-import axios from 'axios'
+import { useState } from 'react'
+import ImportModule from './components/ImportModule'
+import DataPreview from './components/DataPreview'
+import OrderSubmit from './components/OrderSubmit'
+import OrderList from './components/OrderList'
+import './App.css'
+
+const TABS = [
+  { key: 'import', label: '📥 模块一：导入文件' },
+  { key: 'preview', label: '📋 模块二：预览编辑' },
+  { key: 'submit', label: '📮 模块三：提交下单' },
+  { key: 'list', label: '📦 模块四：运单列表' },
+]
 
 function App() {
-  const [word, setWord] = useState('')
-  const [meaning, setMeaning] = useState('')
-  const [wordList, setWordList] = useState([])
+  const [activeTab, setActiveTab] = useState('import')
+  const [importedData, setImportedData] = useState([])
+  const [previewErrors, setPreviewErrors] = useState([])
+  const [importKey, setImportKey] = useState(0)
 
-  // 获取单词列表
-  const getWords = async () => {
-    try {
-      const res = await axios.get('http://localhost:3000/words')
-      setWordList(res.data)
-    } catch (error) {
-      console.log(error)
-      alert('获取数据失败')
-    }
+  const handleDataImported = (data) => {
+    setImportedData(data)
+    setImportKey((k) => k + 1)
   }
 
-  // 页面加载执行
-  useEffect(() => {
-    getWords()
-  }, [])
-
-  // 添加单词
-  const handleAdd = async () => {
-    if (!word || !meaning) {
-      alert('请输入完整内容')
-      return
-    }
-
-    try {
-      await axios.post('http://localhost:3000/words', {
-        word,
-        meaning,
-      })
-
-      alert('添加成功')
-
-      // 清空输入框
-      setWord('')
-      setMeaning('')
-
-      // 重新获取列表
-      getWords()
-    } catch (error) {
-      console.log(error)
-      alert('添加失败')
-    }
+  const handleDataChange = (rows, errors) => {
+    setImportedData(rows)
+    setPreviewErrors(errors)
   }
+
+  const handleSetActiveTab = (tab) => {
+    setActiveTab(tab)
+  }
+
+  const handleSubmitted = () => {
+    setActiveTab('list')
+  }
+
+  const errorCount = previewErrors.length
 
   return (
-    <div style={{ padding: '40px', fontFamily: 'Arial' }}>
-      <h1>React 单词管理系统</h1>
+    <div className="app">
+      <header className="app-header">
+        <h1>📦 物流运单管理系统</h1>
+        <p className="app-subtitle">Excel 模板导入 · 数据校验 · 提交下单 · 运单管理</p>
+      </header>
 
-      <div style={{ marginBottom: '20px' }}>
-        <input
-          type="text"
-          placeholder="请输入英文单词"
-          value={word}
-          onChange={(e) => setWord(e.target.value)}
-          style={{
-            width: '200px',
-            height: '35px',
-            marginRight: '10px',
-            paddingLeft: '10px',
-          }}
-        />
+      <nav className="tab-nav">
+        {TABS.map((tab) => (
+          <button
+            key={tab.key}
+            className={`tab-item ${activeTab === tab.key ? 'tab-active' : ''}`}
+            onClick={() => setActiveTab(tab.key)}
+          >
+            {tab.label}
+            {tab.key === 'preview' && importedData.length > 0 && (
+              <span className={`tab-badge ${errorCount > 0 ? 'badge-error' : 'badge-success'}`}>
+                {importedData.length}
+              </span>
+            )}
+          </button>
+        ))}
+      </nav>
 
-        <input
-          type="text"
-          placeholder="请输入中文意思"
-          value={meaning}
-          onChange={(e) => setMeaning(e.target.value)}
-          style={{
-            width: '200px',
-            height: '35px',
-            marginRight: '10px',
-            paddingLeft: '10px',
-          }}
-        />
-
-        <button
-          onClick={handleAdd}
-          style={{
-            height: '40px',
-            padding: '0 20px',
-            cursor: 'pointer',
-          }}
-        >
-          Add
-        </button>
-      </div>
-
-      <div>
-        <h2>单词列表</h2>
-
-        {wordList.length === 0 ? (
-          <p>暂无数据</p>
-        ) : (
-          <table border="1" cellPadding="10">
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>英文单词</th>
-                <th>中文意思</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {wordList.map((item) => (
-                <tr key={item.id}>
-                  <td>{item.id}</td>
-                  <td>{item.word}</td>
-                  <td>{item.meaning}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      <main className="app-main">
+        {activeTab === 'import' && (
+          <ImportModule
+            onDataImported={handleDataImported}
+            onSetActiveTab={handleSetActiveTab}
+          />
         )}
-      </div>
+
+        {activeTab === 'preview' && (
+          <DataPreview
+            key={importKey}
+            data={importedData}
+            onDataChange={handleDataChange}
+          />
+        )}
+
+        {activeTab === 'submit' && (
+          <OrderSubmit
+            rows={importedData}
+            errors={previewErrors}
+            onSubmitted={handleSubmitted}
+          />
+        )}
+
+        {activeTab === 'list' && <OrderList />}
+      </main>
     </div>
   )
 }
