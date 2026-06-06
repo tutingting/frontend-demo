@@ -58,34 +58,44 @@ export function validateRow(row: OrderRow, allRows: OrderRow[]): FieldError[] {
 }
 
 export function validateAllRows(rows: OrderRow[]): OrderRow[] {
-  return rows.map((row, _idx) => {
-    const errors = validateRow(row, rows)
+  // Build lookup maps for O(1) duplicate checks
+  const groupSkuMap = new Map<string, number>() // key: "extCode||skuCode" → first row index
+  const extCodeCount = new Map<string, number>()
 
-    // Check for duplicate SKU codes within the same order group (same externalCode)
+  rows.forEach((row) => {
     const skuCode = String(row.skuCode || '').trim()
     const extCode = String(row.externalCode || '').trim()
     if (skuCode && extCode) {
-      const sameGroupSameSku = rows.filter(
-        (r) => String(r.skuCode || '').trim() === skuCode &&
-               String(r.externalCode || '').trim() === extCode &&
-               r._rowIndex !== row._rowIndex
-      )
-      if (sameGroupSameSku.length > 0) {
-        errors.push({ field: 'skuCode', message: `同一出库单中SKU编码"${skuCode}"重复（与第${sameGroupSameSku[0]._rowIndex}行）` })
+      const key = `${extCode}||${skuCode}`
+      if (!groupSkuMap.has(key)) groupSkuMap.set(key, row._rowIndex || 0)
+    }
+    if (extCode) {
+      extCodeCount.set(extCode, (extCodeCount.get(extCode) || 0) + 1)
+    }
+  })
+
+  return rows.map((row) => {
+    const errors = validateRow(row, rows)
+
+    const skuCode = String(row.skuCode || '').trim()
+    const extCode = String(row.externalCode || '').trim()
+
+    // O(1) duplicate SKU check within same group
+    if (skuCode && extCode) {
+      const key = `${extCode}||${skuCode}`
+      const firstRowIdx = groupSkuMap.get(key)
+      if (firstRowIdx !== undefined && firstRowIdx !== (row._rowIndex || 0)) {
+        errors.push({ field: 'skuCode', message: `同一出库单中SKU编码"${skuCode}"重复（与第${firstRowIdx}行）` })
       }
     }
 
-    // Check for duplicate external codes in batch
+    // O(1) duplicate external code check
     let duplicate = false
     let duplicateWith = ''
-    if (extCode) {
-      const sameCode = rows.filter(
-        (r) => String(r.externalCode || '') === extCode && r._rowIndex !== row._rowIndex
-      )
-      if (sameCode.length > 0) {
-        duplicate = true
-        duplicateWith = `第${sameCode[0]._rowIndex}行`
-      }
+    if (extCode && (extCodeCount.get(extCode) || 0) > 1) {
+      duplicate = true
+      const firstIdx = rows.find((r) => String(r.externalCode || '').trim() === extCode && r._rowIndex !== row._rowIndex)?._rowIndex
+      if (firstIdx) duplicateWith = `第${firstIdx}行`
     }
 
     return {

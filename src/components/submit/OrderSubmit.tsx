@@ -80,12 +80,21 @@ export default function OrderSubmit({ rows, onSubmitSuccess }: OrderSubmitProps)
       const total = allRecords.length
       let successCount = 0
 
-      const chunkSize = 100
-      for (let i = 0; i < allRecords.length; i += chunkSize) {
-        const chunk = allRecords.slice(i, i + chunkSize)
-        await saveWaybills(chunk)
-        successCount += chunk.length
-        setProgress(Math.round(((i + chunk.length) / total) * 100))
+      // Submit in batches of 500 in parallel (max 3 concurrent)
+      const batchSize = 500
+      const batches: any[][] = []
+      for (let i = 0; i < allRecords.length; i += batchSize) {
+        batches.push(allRecords.slice(i, i + batchSize))
+      }
+
+      const concurrency = 3
+      for (let b = 0; b < batches.length; b += concurrency) {
+        const concurrentBatches = batches.slice(b, b + concurrency)
+        const results = await Promise.all(
+          concurrentBatches.map((chunk) => saveWaybills(chunk))
+        )
+        successCount += results.reduce((s, c) => s + c, 0)
+        setProgress(Math.round((Math.min((b + concurrency) * batchSize, total) / total) * 100))
       }
 
       setProgress(100)

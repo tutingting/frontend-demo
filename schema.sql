@@ -47,3 +47,7 @@ CREATE INDEX IF NOT EXISTS idx_waybill_external_code ON waybill_records(external
 CREATE INDEX IF NOT EXISTS idx_waybill_receiver_name ON waybill_records(receiver_name);
 CREATE INDEX IF NOT EXISTS idx_waybill_store_name ON waybill_records(store_name);
 CREATE INDEX IF NOT EXISTS idx_waybill_created_at ON waybill_records(created_at);
+CREATE INDEX IF NOT EXISTS idx_waybill_sku_code ON waybill_records(sku_code);
+
+-- Performance index for (external_code, sku_code) lookups
+CREATE INDEX IF NOT EXISTS idx_waybill_extcode_skucode ON waybill_records(external_code, sku_code);

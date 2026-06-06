@@ -68,24 +68,45 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST /api/db/waybills
+// POST /api/db/waybills — batch INSERT for performance
 export async function POST(request: NextRequest) {
   const p = await getPool()
   if (!p) return NextResponse.json({ ok: false })
 
   try {
     const records = await request.json()
-    for (const r of records) {
+    if (records.length === 0) return NextResponse.json({ ok: true, count: 0 })
+
+    // Batch multi-row INSERT: build VALUES placeholders in blocks of 500
+    const batchSize = 500
+    let totalInserted = 0
+
+    for (let i = 0; i < records.length; i += batchSize) {
+      const batch = records.slice(i, i + batchSize)
+      const values: any[] = []
+      const placeholders: string[] = []
+
+      batch.forEach((r: any, idx: number) => {
+        const base = idx * 13
+        placeholders.push(`($${base + 1},$${base + 2},$${base + 3},$${base + 4},$${base + 5},$${base + 6},$${base + 7},$${base + 8},$${base + 9},$${base + 10},$${base + 11},$${base + 12},$${base + 13})`)
+        values.push(
+          r.id, r.sessionId || '', r.externalCode || null, r.storeName || null,
+          r.receiverName || null, r.receiverPhone || null, r.receiverAddress || null,
+          r.skuCode, r.skuName, r.skuQuantity, r.skuSpec || null, r.remark || null,
+          r.createdAt || new Date().toISOString()
+        )
+      })
+
       await p.query(
         `INSERT INTO waybill_records (id, session_id, external_code, store_name, receiver_name, receiver_phone, receiver_address, sku_code, sku_name, sku_quantity, sku_spec, remark, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         VALUES ${placeholders.join(',')}
          ON CONFLICT (id) DO NOTHING`,
-        [r.id, r.sessionId || '', r.externalCode || null, r.storeName || null,
-         r.receiverName || null, r.receiverPhone || null, r.receiverAddress || null,
-         r.skuCode, r.skuName, r.skuQuantity, r.skuSpec || null, r.remark || null, r.createdAt || new Date().toISOString()]
+        values
       )
+      totalInserted += batch.length
     }
-    return NextResponse.json({ ok: true, count: records.length })
+
+    return NextResponse.json({ ok: true, count: totalInserted })
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
   }
