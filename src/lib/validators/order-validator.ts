@@ -58,28 +58,26 @@ export function validateRow(row: OrderRow, allRows: OrderRow[]): FieldError[] {
 }
 
 export function validateAllRows(rows: OrderRow[]): OrderRow[] {
-  // Build SKU code frequency map for uniqueness check
-  const skuCodeCount = new Map<string, number>()
-  for (const row of rows) {
-    const code = String(row.skuCode || '').trim()
-    if (code) {
-      skuCodeCount.set(code, (skuCodeCount.get(code) || 0) + 1)
-    }
-  }
-
   return rows.map((row, _idx) => {
     const errors = validateRow(row, rows)
 
-    // Check for duplicate SKU codes (must be unique across all records)
+    // Check for duplicate SKU codes within the same order group (same externalCode)
     const skuCode = String(row.skuCode || '').trim()
-    if (skuCode && (skuCodeCount.get(skuCode) || 0) > 1) {
-      errors.push({ field: 'skuCode', message: `SKU编码"${skuCode}"已存在，SKU编码需唯一` })
+    const extCode = String(row.externalCode || '').trim()
+    if (skuCode && extCode) {
+      const sameGroupSameSku = rows.filter(
+        (r) => String(r.skuCode || '').trim() === skuCode &&
+               String(r.externalCode || '').trim() === extCode &&
+               r._rowIndex !== row._rowIndex
+      )
+      if (sameGroupSameSku.length > 0) {
+        errors.push({ field: 'skuCode', message: `同一出库单中SKU编码"${skuCode}"重复（与第${sameGroupSameSku[0]._rowIndex}行）` })
+      }
     }
 
     // Check for duplicate external codes in batch
     let duplicate = false
     let duplicateWith = ''
-    const extCode = String(row.externalCode || '').trim()
     if (extCode) {
       const sameCode = rows.filter(
         (r) => String(r.externalCode || '') === extCode && r._rowIndex !== row._rowIndex
