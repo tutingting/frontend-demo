@@ -349,7 +349,7 @@ export default function ImportModule({
             <h2 className="card-title">选择解析规则</h2>
             <div className="flex gap-2">
               <button className="btn btn-secondary btn-sm" onClick={handleNewRule} disabled={!selectedFile}>
-                <Plus size={14} /> 新建
+                <Plus size={14} /> 新建规则
               </button>
               <button className="btn btn-primary btn-sm" onClick={handleAiSuggest} disabled={!selectedFile || aiLoading}>
                 {aiLoading ? '分析中...' : 'AI 生成规则'}
@@ -361,7 +361,7 @@ export default function ImportModule({
             <div className="el-empty py-8">
               <AlertCircle size={28} className="mb-3 text-gray-300" />
               <p className="el-empty__title">暂无解析规则</p>
-              <p className="el-empty__description">请新建规则或使用 AI 智能生成</p>
+              <p className="el-empty__description">请新建规则或使用 AI 生成规则</p>
               <button className="btn btn-primary btn-sm mt-2" onClick={handleNewRule}>新建规则</button>
             </div>
           ) : (

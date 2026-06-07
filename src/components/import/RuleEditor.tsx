@@ -611,7 +611,7 @@ export default function RuleEditor({ initialRule, filePreview, onSave, onCancel 
                 ) : (
                   <Play size={12} />
                 )}
-                {testLoading ? '解析中...' : '开始解析'}
+                {testLoading ? '试解析中...' : '试解析'}
               </button>
             </div>
 
