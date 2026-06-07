@@ -99,16 +99,13 @@ export function validateAllRows(rows: OrderRow[]): OrderRow[] {
       }
     }
 
-    // Duplicate external code check → also add to errors to block submission
+    // External code duplicate flag (informational only, does not block submission)
     let duplicate = false
     let duplicateWith = ''
     if (extCode !== '__no_extcode__' && (extCodeCount.get(extCode) || 0) > 1) {
       duplicate = true
       const firstIdx = rows.find((r) => String(r.externalCode || '').trim() === extCode && r._rowIndex !== row._rowIndex)?._rowIndex
-      if (firstIdx) {
-        duplicateWith = `第${firstIdx}行`
-        errors.push({ field: 'externalCode', message: `外部编码"${extCode}"重复（与${duplicateWith}）` })
-      }
+      if (firstIdx) duplicateWith = `第${firstIdx}行`
     }
 
     return {
