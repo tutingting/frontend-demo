@@ -59,8 +59,8 @@ export function validateRow(row: OrderRow, allRows: OrderRow[]): FieldError[] {
 
 export function validateAllRows(rows: OrderRow[]): OrderRow[] {
   // Build lookup maps for O(1) duplicate checks
-  // key: "extCode||skuCode" → first row index (extCode defaults to "__no_extcode__" when empty)
-  const groupSkuMap = new Map<string, number>()
+  // key: "extCode||skuCode" → row indices list (extCode defaults to "__no_extcode__" when empty)
+  const groupSkuMap = new Map<string, number[]>()
   const extCodeCount = new Map<string, number>()
 
   rows.forEach((row) => {
@@ -68,11 +68,19 @@ export function validateAllRows(rows: OrderRow[]): OrderRow[] {
     const extCode = String(row.externalCode || '').trim() || '__no_extcode__'
     if (skuCode) {
       const key = `${extCode}||${skuCode}`
-      if (!groupSkuMap.has(key)) groupSkuMap.set(key, row._rowIndex || 0)
+      const list = groupSkuMap.get(key) || []
+      list.push(row._rowIndex || 0)
+      groupSkuMap.set(key, list)
     }
     if (extCode !== '__no_extcode__') {
       extCodeCount.set(extCode, (extCodeCount.get(extCode) || 0) + 1)
     }
+  })
+
+  // Determine which SKU keys are duplicated (appear in more than one row)
+  const duplicatedSkuKeys = new Set<string>()
+  groupSkuMap.forEach((indices, key) => {
+    if (indices.length > 1) duplicatedSkuKeys.add(key)
   })
 
   return rows.map((row) => {
@@ -81,12 +89,13 @@ export function validateAllRows(rows: OrderRow[]): OrderRow[] {
     const skuCode = String(row.skuCode || '').trim()
     const extCode = String(row.externalCode || '').trim() || '__no_extcode__'
 
-    // O(1) duplicate SKU check within same group
+    // Mark ALL rows with duplicate SKU as errors (not just the second+ occurrence)
     if (skuCode) {
       const key = `${extCode}||${skuCode}`
-      const firstRowIdx = groupSkuMap.get(key)
-      if (firstRowIdx !== undefined && firstRowIdx !== (row._rowIndex || 0)) {
-        errors.push({ field: 'skuCode', message: `同一出库单中SKU编码"${skuCode}"重复（与第${firstRowIdx}行）` })
+      if (duplicatedSkuKeys.has(key)) {
+        const allIndices = groupSkuMap.get(key) || []
+        const otherIdx = allIndices.find((idx) => idx !== (row._rowIndex || 0))
+        errors.push({ field: 'skuCode', message: `同一出库单中SKU编码"${skuCode}"重复（与第${otherIdx}行）` })
       }
     }
 
