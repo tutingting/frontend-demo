@@ -59,17 +59,18 @@ export function validateRow(row: OrderRow, allRows: OrderRow[]): FieldError[] {
 
 export function validateAllRows(rows: OrderRow[]): OrderRow[] {
   // Build lookup maps for O(1) duplicate checks
-  const groupSkuMap = new Map<string, number>() // key: "extCode||skuCode" → first row index
+  // key: "extCode||skuCode" → first row index (extCode defaults to "__no_extcode__" when empty)
+  const groupSkuMap = new Map<string, number>()
   const extCodeCount = new Map<string, number>()
 
   rows.forEach((row) => {
     const skuCode = String(row.skuCode || '').trim()
-    const extCode = String(row.externalCode || '').trim()
-    if (skuCode && extCode) {
+    const extCode = String(row.externalCode || '').trim() || '__no_extcode__'
+    if (skuCode) {
       const key = `${extCode}||${skuCode}`
       if (!groupSkuMap.has(key)) groupSkuMap.set(key, row._rowIndex || 0)
     }
-    if (extCode) {
+    if (extCode !== '__no_extcode__') {
       extCodeCount.set(extCode, (extCodeCount.get(extCode) || 0) + 1)
     }
   })
@@ -78,10 +79,10 @@ export function validateAllRows(rows: OrderRow[]): OrderRow[] {
     const errors = validateRow(row, rows)
 
     const skuCode = String(row.skuCode || '').trim()
-    const extCode = String(row.externalCode || '').trim()
+    const extCode = String(row.externalCode || '').trim() || '__no_extcode__'
 
     // O(1) duplicate SKU check within same group
-    if (skuCode && extCode) {
+    if (skuCode) {
       const key = `${extCode}||${skuCode}`
       const firstRowIdx = groupSkuMap.get(key)
       if (firstRowIdx !== undefined && firstRowIdx !== (row._rowIndex || 0)) {
@@ -92,7 +93,7 @@ export function validateAllRows(rows: OrderRow[]): OrderRow[] {
     // O(1) duplicate external code check
     let duplicate = false
     let duplicateWith = ''
-    if (extCode && (extCodeCount.get(extCode) || 0) > 1) {
+    if (extCode !== '__no_extcode__' && (extCodeCount.get(extCode) || 0) > 1) {
       duplicate = true
       const firstIdx = rows.find((r) => String(r.externalCode || '').trim() === extCode && r._rowIndex !== row._rowIndex)?._rowIndex
       if (firstIdx) duplicateWith = `第${firstIdx}行`

@@ -1,10 +1,15 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Plus, Trash2, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
-import type { ParseRule, FieldMapping, TransformStep, TransformType, FileType } from '@/types'
+import { Plus, Trash2, ChevronDown, ChevronUp, AlertCircle, Play, FileUp, CheckCircle, XCircle } from 'lucide-react'
+import type { ParseRule, FieldMapping, TransformStep, TransformType, FileType, OrderRow } from '@/types'
 import { generateId } from '@/lib/utils/helpers'
 import { showToast } from '@/components/ui/Toast'
+import { parseExcel } from '@/lib/engine/parsers/excel-parser'
+import { parsePdf } from '@/lib/engine/parsers/pdf-parser'
+import { parseWord } from '@/lib/engine/parsers/word-parser'
+import { executeRule } from '@/lib/engine/rule-engine'
+import { validateAllRows } from '@/lib/validators/order-validator'
 
 const TRANSFORM_LABELS: Record<TransformType, string> = {
   skip_rows: '跳过头部行',
@@ -61,6 +66,12 @@ export default function RuleEditor({ initialRule, filePreview, onSave, onCancel 
 
   const [showTransforms, setShowTransforms] = useState(true)
   const [showMappings, setShowMappings] = useState(true)
+
+  // Test preview state
+  const [testFile, setTestFile] = useState<File | null>(null)
+  const [testResult, setTestResult] = useState<OrderRow[] | null>(null)
+  const [testLoading, setTestLoading] = useState(false)
+  const [showTestSection, setShowTestSection] = useState(false)
 
   // Set file preview
   useEffect(() => {
@@ -128,6 +139,76 @@ export default function RuleEditor({ initialRule, filePreview, onSave, onCancel 
       showToast('warning', '至少需要添加一个字段映射')
     }
     onSave(rule)
+  }
+
+  const readFileAsArrayBuffer = (file: File): Promise<ArrayBuffer> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as ArrayBuffer)
+      reader.onerror = () => reject(new Error('文件读取失败'))
+      reader.readAsArrayBuffer(file)
+    })
+  }
+
+  const detectFileType = (file: File): FileType => {
+    const name = file.name.toLowerCase()
+    if (name.endsWith('.xlsx') || name.endsWith('.xls')) return 'excel'
+    if (name.endsWith('.pdf')) return 'pdf'
+    if (name.endsWith('.docx') || name.endsWith('.doc')) return 'word'
+    return 'excel'
+  }
+
+  const handleTestParse = async () => {
+    if (!testFile) {
+      showToast('error', '请先选择测试文件')
+      return
+    }
+    if (rule.transforms.length === 0) {
+      showToast('error', '请先添加至少一个转换步骤')
+      return
+    }
+
+    setTestLoading(true)
+    setTestResult(null)
+
+    try {
+      const buffer = await readFileAsArrayBuffer(testFile)
+      const fileType = detectFileType(testFile)
+      let rawData: string[][] = []
+      let sheetRowCounts: number[] | undefined
+
+      if (fileType === 'excel') {
+        const sheets = parseExcel(buffer)
+        const hasMultiSheetMerge = rule.transforms.some((t) => t.type === 'multi_sheet_merge')
+        if (hasMultiSheetMerge) {
+          rawData = sheets.flatMap((s) => s.rows)
+          if (sheets.length > 1) sheetRowCounts = sheets.map((s) => s.rows.length)
+        } else {
+          rawData = sheets[0]?.rows || []
+        }
+      } else if (fileType === 'pdf') {
+        const result = await parsePdf(buffer)
+        rawData = result.tables.length > 0 ? result.tables.flatMap((t) => t.rows) : result.pages.map((p) => [p.text])
+      } else if (fileType === 'word') {
+        const result = await parseWord(buffer)
+        rawData = result.paragraphs.map((p) => [p])
+      }
+
+      if (rawData.length === 0) {
+        showToast('error', '文件中未找到有效数据')
+        setTestLoading(false)
+        return
+      }
+
+      const engineResult = executeRule(rule, rawData, testFile.name, sheetRowCounts)
+      const validated = validateAllRows(engineResult.rows)
+      setTestResult(validated)
+      showToast('success', `解析完成：${validated.length} 条数据`)
+    } catch (err) {
+      showToast('error', `解析失败: ${err instanceof Error ? err.message : '未知错误'}`)
+    } finally {
+      setTestLoading(false)
+    }
   }
 
   const renderTransformParams = (transform: TransformStep, index: number) => {
@@ -492,6 +573,107 @@ export default function RuleEditor({ initialRule, filePreview, onSave, onCancel 
           </pre>
         </div>
       )}
+
+      {/* Test Preview */}
+      <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowTestSection(!showTestSection)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 hover:bg-gray-100 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <Play size={14} className="text-[#0fc6c2]" />
+            <span className="text-sm font-medium text-gray-700">试解析</span>
+            <span className="text-xs text-gray-400">用当前规则解析文件，预览结果</span>
+          </div>
+          {showTestSection ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+        </button>
+
+        {showTestSection && (
+          <div className="p-4 space-y-3">
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                accept=".xlsx,.xls,.pdf,.docx"
+                onChange={(e) => {
+                  setTestFile(e.target.files?.[0] || null)
+                  setTestResult(null)
+                }}
+                className="text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-[#0fc6c2]/10 file:text-[#0fc6c2] hover:file:bg-[#0fc6c2]/20"
+              />
+              <button
+                className="btn-primary text-xs flex items-center gap-1"
+                onClick={handleTestParse}
+                disabled={testLoading || !testFile}
+              >
+                {testLoading ? (
+                  <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                ) : (
+                  <Play size={12} />
+                )}
+                {testLoading ? '解析中...' : '开始解析'}
+              </button>
+            </div>
+
+            {testResult && (
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-gray-500">
+                    共 {testResult.length} 条结果，{testResult.reduce((s, r) => s + (r._errors?.length || 0), 0)} 个错误
+                  </span>
+                  <span className={`tag text-[10px] ${testResult.filter((r) => r._errors?.length).length === 0 ? 'tag-success' : 'tag-warning'}`}>
+                    {testResult.filter((r) => r._errors?.length).length === 0 ? '全部通过' : '有错误'}
+                  </span>
+                </div>
+                <div className="max-h-60 overflow-y-auto custom-scrollbar border border-gray-200 rounded-lg">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50 sticky top-0">
+                      <tr>
+                        <th className="text-left px-2 py-1.5 text-gray-500 font-medium">#</th>
+                        <th className="text-left px-2 py-1.5 text-gray-500 font-medium">SKU编码</th>
+                        <th className="text-left px-2 py-1.5 text-gray-500 font-medium">SKU名称</th>
+                        <th className="text-right px-2 py-1.5 text-gray-500 font-medium">数量</th>
+                        <th className="text-left px-2 py-1.5 text-gray-500 font-medium">门店/收件人</th>
+                        <th className="text-left px-2 py-1.5 text-gray-500 font-medium">错误</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {testResult.slice(0, 50).map((row, idx) => (
+                        <tr key={idx} className={`border-t border-gray-100 ${row._errors?.length ? 'bg-red-50' : ''}`}>
+                          <td className="px-2 py-1 text-gray-400">{idx + 1}</td>
+                          <td className="px-2 py-1 font-medium">{String(row.skuCode || '')}</td>
+                          <td className="px-2 py-1 text-gray-600">{String(row.skuName || '')}</td>
+                          <td className="px-2 py-1 text-right">{row.skuQuantity}</td>
+                          <td className="px-2 py-1 text-gray-500 truncate max-w-[120px]">
+                            {row.storeName || row.receiverName || '-'}
+                          </td>
+                          <td className="px-2 py-1">
+                            {row._errors?.length ? (
+                              <span className="text-red-500" title={row._errors.map((e) => e.message).join('; ')}>
+                                <XCircle size={12} className="inline mr-1" />
+                                {row._errors.length}个错
+                              </span>
+                            ) : (
+                              <CheckCircle size={12} className="text-green-400" />
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {testResult.length > 50 && (
+                        <tr className="border-t border-gray-100">
+                          <td colSpan={6} className="px-2 py-2 text-center text-gray-400">
+                            仅显示前 50 条，共 {testResult.length} 条
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Actions */}
       <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">

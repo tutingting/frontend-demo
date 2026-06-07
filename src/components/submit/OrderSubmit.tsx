@@ -58,6 +58,23 @@ export default function OrderSubmit({ rows, onSubmitSuccess }: OrderSubmitProps)
     setResult(null)
 
     try {
+      // Defensive: check for duplicate SKU within each order group
+      const duplicateErrors: string[] = []
+      orderGroups.forEach((group) => {
+        const seenSkus = new Set<string>()
+        group.items.forEach((item) => {
+          if (seenSkus.has(item.skuCode)) {
+            duplicateErrors.push(`出库单"${group.externalCode || '(未编码)'}"中SKU"${item.skuCode}"重复`)
+          }
+          seenSkus.add(item.skuCode)
+        })
+      })
+      if (duplicateErrors.length > 0) {
+        showToast('error', duplicateErrors[0])
+        setSubmitting(false)
+        return
+      }
+
       const sessionId = `session_${Date.now()}`
       const allRecords = orderGroups.flatMap((group) =>
         group.items.map((item) => ({
